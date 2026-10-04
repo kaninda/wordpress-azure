@@ -53,3 +53,36 @@ terraform plan
 terraform apply
 terraform destroy   # en fin de session
 ```
+
+## Étape 01 — Réseau
+
+### Plan d'adressage
+| Subnet | CIDR | IP utilisables | Rôle |
+|---|---|---|---|
+| snet-app | 10.0.1.0/24 | 251 | VM WordPress, sortie via NAT Gateway |
+| snet-data | 10.0.2.0/24 | 251 | MySQL Flexible (étape 04) |
+| snet-jumpbox | 10.0.3.0/27 | 27 | Jumpbox, SSH depuis le poste admin |
+| AzureBastionSubnet | 10.0.4.0/26 | — | Réservé, étape 05 (non créé) |
+
+VNet : `10.0.0.0/16`, région Switzerland North.
+
+### Choix
+- Un NSG par subnet, associé au subnet. SSH : poste admin → jumpbox → app.
+- NAT Gateway Standard sur snet-app uniquement.
+- `default_outbound_access_enabled = false` sur tous les subnets : aucune sortie implicite.
+- Délégation MySQL de snet-data reportée à l'étape 04.
+
+### Prérequis
+Créer `terraform/terraform.tfvars` (non commité) :
+admin_ip = "x.x.x.x/32"
+
+## Roadmap
+- [x] 00 socle
+- [x] 01 réseau
+- [ ] 02 VM + jumpbox
+- [ ] 03 LB + Ansible
+- [ ] 04 MySQL + WordPress
+- [ ] 05 Bastion
+- [ ] 06 stockage
+- [ ] 07 identité
+- [ ] 08 monitoring/backup

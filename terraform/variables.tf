@@ -19,5 +19,11 @@ variable "owner" {
 variable "etape" {
   description = "Étape courante du lab"
   type        = string
-  default     = "00-socle"
+  default     = "01-reseau"
 }
+
+variable "admin_ip" {
+  description = "IP publique de mon poste, en CIDR /32"
+  type        = string
+}
+
