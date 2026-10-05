@@ -79,10 +79,33 @@ admin_ip = "x.x.x.x/32"
 ## Roadmap
 - [x] 00 socle
 - [x] 01 réseau
-- [ ] 02 VM + jumpbox
+- [x] 02 VM + jumpbox
 - [ ] 03 LB + Ansible
 - [ ] 04 MySQL + WordPress
 - [ ] 05 Bastion
 - [ ] 06 stockage
 - [ ] 07 identité
 - [ ] 08 monitoring/backup
+
+## Étape 02 — VM WordPress + jumpbox
+
+**Ajouté**
+- Jumpbox `vm-jumpbox` dans snet-jumpbox, IP publique Standard statique
+- VM `vm-app` dans snet-app, sans IP publique (sortie via NAT Gateway)
+- Ubuntu 24.04 LTS Gen2, `Standard_D2als_v6`, disque StandardSSD (NVMe), Trusted launch
+- Accès SSH par clé ed25519 uniquement (mot de passe désactivé)
+- nsg-jumpbox : règle `Deny-VNet-Inbound` (priorité 4000)
+
+**Accès**
+​```
+Mac ──22──► jumpbox (IP publique) ──22──► vm-app (10.0.1.4)
+​```
+`~/.ssh/config` avec `ProxyJump az-jumpbox`.
+
+**Tests validés**
+- `ssh az-jumpbox` / `ssh az-app`
+- Sortie de vm-app = IP de la NAT Gateway ; sortie de la jumpbox = sa propre IP
+- vm-app → jumpbox:22 bloqué
+
+**Choix**
+- Série D au lieu de B : Bs v1 fermée pour la souscription, Bsv2 avec quota à 0

@@ -21,3 +21,13 @@ output "natgw_public_ip" {
   description = "IP publique de sortie de snet-app"
   value       = azurerm_public_ip.natgw.ip_address
 }
+
+output "jumpbox_public_ip" {
+  description = "IP publique de la jumpbox"
+  value       = azurerm_public_ip.jumpbox.ip_address
+}
+
+output "app_private_ip" {
+  description = "IP privee de la VM app"
+  value       = azurerm_network_interface.app.private_ip_address
+}
