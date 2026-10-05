@@ -11,6 +11,7 @@ locals {
     jumpbox = "10.0.3.0/27"
     # bastion = "10.0.4.0/26"  # réservé étape 05 (AzureBastionSubnet)
   }
+  ssh_public_key = file(pathexpand(var.ssh_public_key_path))
 }
 
 # RG
@@ -70,6 +71,18 @@ resource "azurerm_network_security_group" "jumpbox" {
     source_port_range          = "*"
     destination_port_range     = "22"
     source_address_prefix      = var.admin_ip
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "Deny-VNet-Inbound"
+    priority                   = 4000
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "VirtualNetwork"
     destination_address_prefix = "*"
   }
 }

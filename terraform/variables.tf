@@ -19,11 +19,17 @@ variable "owner" {
 variable "etape" {
   description = "Étape courante du lab"
   type        = string
-  default     = "01-reseau"
+  default     = "02-vm"
 }
 
 variable "admin_ip" {
   description = "IP publique de mon poste, en CIDR /32"
   type        = string
+}
+
+variable "ssh_public_key_path" {
+  description = "clé public SSH du lab"
+  type        = string
+  default     = "~/.ssh/az-wp-lab.pub"
 }
 
