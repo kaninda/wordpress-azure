@@ -39,3 +39,9 @@ variable "vm_size" {
   default     = "Standard_D2als_v6"
 }
 
+variable "mysql_admin_password" {
+  description = "Mot de passe admin MySQL (dans terraform.tfvars, ignoré par git)"
+  type        = string
+  sensitive   = true
+}
+
