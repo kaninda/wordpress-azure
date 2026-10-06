@@ -68,7 +68,6 @@ resource "azurerm_network_security_group" "jumpbox" {
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   tags                = local.common_tags
-
   security_rule {
     name                       = "Allow-SSH-From-Admin"
     priority                   = 100
@@ -80,7 +79,6 @@ resource "azurerm_network_security_group" "jumpbox" {
     source_address_prefix      = var.admin_ip
     destination_address_prefix = "*"
   }
-
   security_rule {
     name                       = "Deny-VNet-Inbound"
     priority                   = 4000
@@ -105,6 +103,28 @@ resource "azurerm_network_security_group" "data" {
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   tags                = local.common_tags
+  security_rule {
+    name                       = "Allow-MySQL-From-App"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_address_prefix      = local.subnet_cidrs.app
+    source_port_range          = "*"
+    destination_address_prefix = local.subnet_cidrs.data
+    destination_port_range     = "3306"
+  }
+  security_rule {
+    name                       = "Deny-VNet-Inbound"
+    priority                   = 4000
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_address_prefix      = "VirtualNetwork"
+    source_port_range          = "*"
+    destination_address_prefix = "VirtualNetwork"
+    destination_port_range     = "*"
+  }
 }
 
 resource "azurerm_subnet_network_security_group_association" "data" {
@@ -140,7 +160,6 @@ resource "azurerm_network_security_group" "app" {
     source_address_prefix      = "Internet"
     destination_address_prefix = "*"
   }
-
   security_rule {
     name                       = "Deny-VNet-Inbound"
     priority                   = 4000
