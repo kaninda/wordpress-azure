@@ -19,7 +19,7 @@ variable "owner" {
 variable "etape" {
   description = "Étape courante du lab"
   type        = string
-  default     = "03-lb"
+  default     = "04-wordpress"
 }
 
 variable "admin_ip" {

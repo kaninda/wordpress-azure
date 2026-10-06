@@ -37,8 +37,15 @@ resource "azurerm_subnet" "data" {
   virtual_network_name            = azurerm_virtual_network.main.name
   address_prefixes                = [local.subnet_cidrs.data]
   default_outbound_access_enabled = false
+  delegation {
+    name = "mysql-flexible"
+    service_delegation {
+      name    = "Microsoft.DBforMySQL/flexibleServers"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
+    }
+  }
 }
-
+#SN
 resource "azurerm_subnet" "app" {
   name                            = "snet-app"
   resource_group_name             = azurerm_resource_group.main.name
@@ -46,7 +53,7 @@ resource "azurerm_subnet" "app" {
   address_prefixes                = [local.subnet_cidrs.app]
   default_outbound_access_enabled = false
 }
-
+#SN
 resource "azurerm_subnet" "jumpbox" {
   name                            = "snet-jumpbox"
   resource_group_name             = azurerm_resource_group.main.name
