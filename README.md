@@ -17,8 +17,8 @@ déjà réalisée sur AWS, en Infrastructure as Code.
 | Étape | Contenu | Ressources payantes | Coût estimé | Statut |
 |---|---|---|---|---|
 | 00 | Socle : repo, provider, RG, budget | aucune (RG gratuit) | 0 | ✅ |
-| 01 | Réseau : VNet, subnets, NSG, NAT Gateway | NAT Gateway | à estimer | ⏳ |
-| 02 | VM WordPress + jumpbox | VM, disques, IP publique | à estimer | ⏳ |
+| 01 | Réseau : VNet, subnets, NSG, NAT Gateway | NAT Gateway | à estimer | ✅ |
+| 02 | VM WordPress + jumpbox | VM, disques, IP publique | à estimer | ✅ |
 | 03 | Load Balancer + Ansible | LB Standard, IP publique | à estimer | ⏳ |
 | 04 | MySQL Flexible + WordPress | MySQL Flexible | à estimer | ⏳ |
 | 05 | Azure Bastion | Bastion | à estimer | ⏳ |

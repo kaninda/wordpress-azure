@@ -29,7 +29,7 @@ resource "azurerm_linux_virtual_machine" "jumpbox" {
   name                  = "vm-jumpbox-${var.project}"
   location              = azurerm_resource_group.main.location
   resource_group_name   = azurerm_resource_group.main.name
-  size                  = "Standard_D2als_v6"
+  size                  = var.vm_size
   network_interface_ids = [azurerm_network_interface.jumpbox.id]
   tags                  = local.common_tags
 
@@ -80,7 +80,7 @@ resource "azurerm_linux_virtual_machine" "app" {
   name                  = "vm-app-${var.project}"
   location              = azurerm_resource_group.main.location
   resource_group_name   = azurerm_resource_group.main.name
-  size                  = "Standard_D2als_v6"
+  size                  = var.vm_size
   network_interface_ids = [azurerm_network_interface.app.id]
   tags                  = local.common_tags
 

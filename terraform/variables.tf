@@ -19,7 +19,7 @@ variable "owner" {
 variable "etape" {
   description = "Étape courante du lab"
   type        = string
-  default     = "02-vm"
+  default     = "03-lb"
 }
 
 variable "admin_ip" {
@@ -31,5 +31,11 @@ variable "ssh_public_key_path" {
   description = "clé public SSH du lab"
   type        = string
   default     = "~/.ssh/az-wp-lab.pub"
+}
+
+variable "vm_size" {
+  description = "Taille des VMs (série B indisponible : quota)"
+  type        = string
+  default     = "Standard_D2als_v6"
 }
 
