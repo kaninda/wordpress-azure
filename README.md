@@ -29,6 +29,45 @@ déjà réalisée sur AWS, en Infrastructure as Code.
 Coûts à estimer avec la [calculatrice Azure](https://azure.microsoft.com/pricing/calculator/).
 Règle : `terraform destroy` en fin de chaque session.
 
+## Démarrage rapide
+
+```
+az login → terraform apply → ~/.ssh/config → ansible-playbook → curl → terraform destroy
+```
+
+**Prérequis** : Terraform ~> 1.16, Azure CLI, Ansible (`brew install ansible`),
+clé SSH `~/.ssh/az-wp-lab`, hôtes `az-jumpbox` et `az-app` dans `~/.ssh/config`.
+
+```bash
+# 1. Authentification (ARM_SUBSCRIPTION_ID défini dans ~/.zshrc)
+az login
+
+# 2. Infrastructure  ⚠️ facturé à l'heure dès l'apply
+cd terraform
+terraform init
+terraform apply
+terraform output            # jumpbox_public_ip, lb_public_ip…
+
+# 3. SSH : l'IP de la jumpbox change à chaque apply
+#    → reporter jumpbox_public_ip dans HostName de az-jumpbox (~/.ssh/config)
+ssh-keygen -R 10.0.1.4
+ssh az-jumpbox exit && ssh az-app exit
+
+# 4. Configuration de la VM
+cd ../ansible
+ansible-playbook nginx.yml
+
+# 5. Vérification
+curl http://$(terraform -chdir=../terraform output -raw lb_public_ip)
+
+# 6. Fin de session : obligatoire
+cd ../terraform && terraform destroy
+```
+
+> `admin_ip` (terraform.tfvars) doit correspondre à ton IP publique (`curl ifconfig.me`),
+> sinon le SSH vers la jumpbox est bloqué.
+
+
 ## Étape 00 — Socle
 
 **Objectif** : poser les fondations, sans aucune ressource payante.
