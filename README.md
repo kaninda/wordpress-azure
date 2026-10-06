@@ -19,7 +19,7 @@ déjà réalisée sur AWS, en Infrastructure as Code.
 | 00 | Socle : repo, provider, RG, budget | aucune (RG gratuit) | 0 | ✅ |
 | 01 | Réseau : VNet, subnets, NSG, NAT Gateway | NAT Gateway | à estimer | ✅ |
 | 02 | VM WordPress + jumpbox | VM, disques, IP publique | à estimer | ✅ |
-| 03 | Load Balancer + Ansible | LB Standard, IP publique | à estimer | ⏳ |
+| 03 | Load Balancer + Ansible | LB Standard, IP publique | à estimer | ✅ |
 | 04 | MySQL Flexible + WordPress | MySQL Flexible | à estimer | ⏳ |
 | 05 | Azure Bastion | Bastion | à estimer | ⏳ |
 | 06 | Stockage | Storage account | à estimer | ⏳ |
@@ -80,7 +80,7 @@ admin_ip = "x.x.x.x/32"
 - [x] 00 socle
 - [x] 01 réseau
 - [x] 02 VM + jumpbox
-- [ ] 03 LB + Ansible
+- [x] 03 LB + Ansible
 - [ ] 04 MySQL + WordPress
 - [ ] 05 Bastion
 - [ ] 06 stockage
@@ -109,3 +109,44 @@ Mac ──22──► jumpbox (IP publique) ──22──► vm-app (10.0.1.4)
 
 **Choix**
 - Série D au lieu de B : Bs v1 fermée pour la souscription, Bsv2 avec quota à 0
+
+## Étape 03 — Load Balancer + Ansible (Nginx)
+
+### Ce qui est ajouté
+- **Load Balancer Standard public** (`lb.tf`) : IP publique Standard statique, frontend `fe-public`,
+  backend pool `bep-app` (NIC de vm-app), probe HTTP:80 sur `/`, règle 80 → 80.
+- **`disable_outbound_snat = true`** : le sortant passe uniquement par la NAT Gateway.
+- **Cloisonnement `nsg-app`** : 100 SSH depuis snet-jumpbox · 110 HTTP depuis Internet · 4000 Deny VNet.
+  Les probes (tag `AzureLoadBalancer`, règle par défaut 65001) restent autorisées.
+- **Ansible** (`ansible/`) : playbook `nginx.yml` qui installe Nginx et déploie une page affichant le hostname.
+- Variables : `etape = "03-lb"`, taille des VMs dans `vm_size`.
+
+```
+Internet ──80──► LB (IP publique) ──► probe HTTP:80 ──► vm-app (Nginx)
+vm-app ──sortant──► NAT Gateway
+Poste ──SSH──► jumpbox ──ProxyJump──► vm-app   (Ansible passe par là)
+```
+
+### Lancer Ansible
+Prérequis : `brew install ansible`, hôtes `az-jumpbox` et `az-app` dans `~/.ssh/config`.
+
+```bash
+# Après chaque apply : l'IP publique de la jumpbox change
+terraform -chdir=terraform output jumpbox_public_ip   # → HostName de az-jumpbox dans ~/.ssh/config
+ssh-keygen -R 10.0.1.4 && ssh az-jumpbox exit && ssh az-app exit
+
+cd ansible                     # ansible.cfg n'est lu que depuis ce dossier
+ansible app -m ping
+ansible-playbook nginx.yml     # 2e passage : changed=0 (idempotence)
+```
+
+### Tests réalisés
+| Test | Résultat |
+|---|---|
+| `curl` LB avant Nginx | timeout (aucun backend sain) |
+| `curl http://<lb_public_ip>` après playbook | page `vm-app-wordpress-azure` |
+| 2e passage du playbook | `changed=0` |
+| Arrêt de Nginx | probe KO, Health Probe Status → 0 %, `curl` en timeout |
+| Relance via le playbook | `changed=1`, site de nouveau OK |
+
+<img src="docs/test_nginx_off.webp" alt="Health Probe Status : 0 % → 100 % → chute à l'arrêt de Nginx" width="700">
