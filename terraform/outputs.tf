@@ -31,3 +31,8 @@ output "app_private_ip" {
   description = "IP privee de la VM app"
   value       = azurerm_network_interface.app.private_ip_address
 }
+
+output "lb_public_ip" {
+  description = "IP publique du LB"
+  value       = azurerm_public_ip.lb.ip_address
+}

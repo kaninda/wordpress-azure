@@ -15,7 +15,7 @@
         dest: /var/www/html/index.html
         content: |
           <meta charset="utf-8">
-          <h1>{{ ansible_hostname }}</h1>
+          <h1>{{ ansible_facts['hostname'] }}</h1>
           <p>Étape 03 — servi via le Load Balancer</p>
         owner: root
         group: root
