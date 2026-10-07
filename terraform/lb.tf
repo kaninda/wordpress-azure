@@ -35,7 +35,7 @@ resource "azurerm_lb_probe" "http" {
   name            = "probe-http-80"
   port            = 80
   protocol        = "Http"
-  request_path    = "/"
+  request_path    = "/healthz"
 }
 
 resource "azurerm_lb_rule" "http" {
