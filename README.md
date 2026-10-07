@@ -20,7 +20,7 @@ déjà réalisée sur AWS, en Infrastructure as Code.
 | 01 | Réseau : VNet, subnets, NSG, NAT Gateway | NAT Gateway | à estimer | ✅ |
 | 02 | VM WordPress + jumpbox | VM, disques, IP publique | à estimer | ✅ |
 | 03 | Load Balancer + Ansible | LB Standard, IP publique | à estimer | ✅ |
-| 04 | MySQL Flexible + WordPress | MySQL Flexible | à estimer | ⏳ |
+| 04 | MySQL Flexible + WordPress | MySQL Flexible | à estimer | ✅ |
 | 05 | Azure Bastion | Bastion | à estimer | ⏳ |
 | 06 | Stockage | Storage account | à estimer | ⏳ |
 | 07 | Identité | — | à estimer | ⏳ |
@@ -32,37 +32,42 @@ Règle : `terraform destroy` en fin de chaque session.
 ## Démarrage rapide
 
 ```
-az login → terraform apply → ~/.ssh/config → ansible-playbook → curl → terraform destroy
+az login → export mdp MySQL → terraform apply → ~/.ssh/config → ansible-playbook → tests → terraform destroy
 ```
 
 **Prérequis** : Terraform ~> 1.16, Azure CLI, Ansible (`brew install ansible`),
 clé SSH `~/.ssh/az-wp-lab`, hôtes `az-jumpbox` et `az-app` dans `~/.ssh/config`.
 
-```bash
-# 1. Authentification (ARM_SUBSCRIPTION_ID défini dans ~/.zshrc)
-az login
+⚠️ Tout se fait **dans le même terminal** : le mot de passe MySQL n'existe que dans sa session.
 
-# 2. Infrastructure  ⚠️ facturé à l'heure dès l'apply
+```bash
+# 1. Authentification + mot de passe MySQL (jamais dans un fichier)
+az login
+read -s TF_VAR_mysql_admin_password && export TF_VAR_mysql_admin_password
+[ -n "$TF_VAR_mysql_admin_password" ] && echo "OK"
+
+# 2. Infrastructure  ⚠️ facturé à l'heure dès l'apply (~5 min dont MySQL)
 cd terraform
 terraform init
 terraform apply
-terraform output            # jumpbox_public_ip, lb_public_ip…
+terraform output            # jumpbox_public_ip, lb_public_ip, mysql_fqdn…
 
 # 3. SSH : l'IP de la jumpbox change à chaque apply
 #    → reporter jumpbox_public_ip dans HostName de az-jumpbox (~/.ssh/config)
 ssh-keygen -R 10.0.1.4
 ssh az-jumpbox exit && ssh az-app exit
 
-# 4. Configuration de la VM (mot de passe MySQL : une fois par terminal)
-read -s TF_VAR_mysql_admin_password && export TF_VAR_mysql_admin_password
+# 4. Configuration de la VM (depuis ansible/ : le playbook lit les outputs Terraform)
 cd ../ansible
-ansible-playbook wordpress.yml
+ansible-playbook wordpress.yml      # 2e passage : changed=0
 
 # 5. Vérification
-curl http://$(terraform -chdir=../terraform output -raw lb_public_ip)
+curl http://$(terraform -chdir=../terraform output -raw lb_public_ip)/healthz   # → ok
+# puis http://<lb_public_ip> dans le navigateur (assistant WordPress)
 
 # 6. Fin de session : obligatoire
 cd ../terraform && terraform destroy
+unset TF_VAR_mysql_admin_password
 ```
 
 > `admin_ip` (terraform.tfvars) doit correspondre à ton IP publique (`curl ifconfig.me`),
@@ -116,17 +121,6 @@ VNet : `10.0.0.0/16`, région Switzerland North.
 Créer `terraform/terraform.tfvars` (non commité) :
 admin_ip = "x.x.x.x/32"
 
-## Roadmap
-- [x] 00 socle
-- [x] 01 réseau
-- [x] 02 VM + jumpbox
-- [x] 03 LB + Ansible
-- [ ] 04 MySQL + WordPress
-- [ ] 05 Bastion
-- [ ] 06 stockage
-- [ ] 07 identité
-- [ ] 08 monitoring/backup
-
 ## Étape 02 — VM WordPress + jumpbox
 
 **Ajouté**
@@ -137,9 +131,9 @@ admin_ip = "x.x.x.x/32"
 - nsg-jumpbox : règle `Deny-VNet-Inbound` (priorité 4000)
 
 **Accès**
-​```
+```
 Mac ──22──► jumpbox (IP publique) ──22──► vm-app (10.0.1.4)
-​```
+```
 `~/.ssh/config` avec `ProxyJump az-jumpbox`.
 
 **Tests validés**
@@ -192,3 +186,48 @@ ansible-playbook nginx.yml     # 2e passage : changed=0 (idempotence)
 <img src="docs/test_nginx_off.webp" alt="Health Probe Status : 0 % → 100 % → chute à l'arrêt de Nginx" width="700">
 
 > `nginx.yml` a été remplacé par `wordpress.yml` à l'étape 04 (consultable via le tag `etape-03`).
+
+## Étape 04 — MySQL Flexible + WordPress
+
+### Ce qui est ajouté
+- **Délégation** de snet-data à `Microsoft.DBforMySQL/flexibleServers`.
+- **Zone DNS privée** `wp-lab.private.mysql.database.azure.com` + lien VNet (sans auto-registration).
+- **MySQL Flexible Server** en accès privé : MySQL 8.4, Burstable `B_Standard_B1ms`, 20 Go,
+  sans autogrow ni IOPS auto, sans HA, backup 1 jour. Nom unique via `random_string`.
+- **Base `wordpress`** (utf8mb4) et output `mysql_fqdn`.
+- **Cloisonnement `nsg-data`** : 100 Allow 3306 depuis snet-app · 4000 Deny VNet.
+- **Probe du LB sur `/healthz`** (WordPress répond 302 sur `/` avant installation).
+- **Ansible** : `wordpress.yml` (remplace `nginx.yml`) — Nginx, PHP-FPM, WordPress,
+  templates `wp-config.php.j2` et `wordpress.conf.j2`, handler de reload.
+
+```
+Internet ──80──► LB (probe /healthz) ──► vm-app : Nginx ──► PHP-FPM
+                                                              │ 3306 / TLS
+vm-app ──DNS──► zone privée (CNAME) ──► 10.0.2.4 ◄────────────┘ MySQL Flexible (snet-data)
+jumpbox ──3306──► ✗ bloqué par nsg-data
+```
+
+### Choix
+- **Mot de passe** : variable d'environnement `TF_VAR_mysql_admin_password`, lue par
+  Terraform (convention `TF_VAR_`) et par Ansible (`lookup('env')`). Aucun fichier.
+- **FQDN** : lu par Ansible directement dans les outputs Terraform (`lookup('pipe')`).
+- **TLS conservé** (`require_secure_transport`) : `MYSQL_CLIENT_FLAGS = MYSQLI_CLIENT_SSL`.
+- **MySQL 8.4** : le support standard de la 8.0 a pris fin le 31 mai 2026 (support étendu payant).
+- **Clés WordPress** dérivées du mot de passe (sha256) : stables, donc playbook idempotent.
+
+### Tests réalisés
+| Test | Résultat |
+|---|---|
+| `nslookup` du FQDN depuis le Mac | NXDOMAIN (invisible depuis Internet) |
+| `nslookup` depuis vm-app | CNAME → zone privée → `10.0.2.4` |
+| `mysql` depuis vm-app | connecté, base `wordpress` présente, `Ssl_cipher` = TLS_AES_256_GCM_SHA384 |
+| `nc` 3306 depuis la jumpbox | résolution OK, connexion en **timeout** (Deny NSG) |
+| Playbook, 2e passage | `changed=0` |
+| Assistant WordPress via le LB + article publié | OK |
+
+<img src="docs/test_wordpress_article.png" alt="Article publié via le Load Balancer" width="700">
+
+### Dette
+- Mot de passe MySQL en clair dans le state → `administrator_password_wo` (write-only) disponible en azurerm 5.x, ou Key Vault (étape 07).
+- WordPress se connecte avec le compte admin MySQL → utilisateur dédié limité à la base `wordpress`.
+- Site en HTTP uniquement (HTTPS hors périmètre).
