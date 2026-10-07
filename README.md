@@ -53,9 +53,10 @@ terraform output            # jumpbox_public_ip, lb_public_ip…
 ssh-keygen -R 10.0.1.4
 ssh az-jumpbox exit && ssh az-app exit
 
-# 4. Configuration de la VM
+# 4. Configuration de la VM (mot de passe MySQL : une fois par terminal)
+read -s TF_VAR_mysql_admin_password && export TF_VAR_mysql_admin_password
 cd ../ansible
-ansible-playbook nginx.yml
+ansible-playbook wordpress.yml
 
 # 5. Vérification
 curl http://$(terraform -chdir=../terraform output -raw lb_public_ip)
@@ -189,3 +190,5 @@ ansible-playbook nginx.yml     # 2e passage : changed=0 (idempotence)
 | Relance via le playbook | `changed=1`, site de nouveau OK |
 
 <img src="docs/test_nginx_off.webp" alt="Health Probe Status : 0 % → 100 % → chute à l'arrêt de Nginx" width="700">
+
+> `nginx.yml` a été remplacé par `wordpress.yml` à l'étape 04 (consultable via le tag `etape-03`).
