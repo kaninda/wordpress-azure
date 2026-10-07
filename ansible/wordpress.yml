@@ -54,4 +54,35 @@
         group: www-data
         mode: "0640"
 
+    - name: Déployer la config Nginx WordPress
+      ansible.builtin.template:
+        src: wordpress.conf.j2
+        dest: /etc/nginx/sites-available/wordpress
+        mode: "0644"
+      notify: Recharger Nginx
+
+    - name: Activer le site WordPress
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/wordpress
+        dest: /etc/nginx/sites-enabled/wordpress
+        state: link
+      notify: Recharger Nginx
+
+    - name: Désactiver le site par défaut
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Recharger Nginx
+
+    - name: Nginx démarré et activé au boot
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+
+  handlers:
+    - name: Recharger Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
 
