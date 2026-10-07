@@ -8,7 +8,7 @@
         name: nginx
         state: present
         update_cache: true
-        cache_valid_time: 3400
+        cache_valid_time: 3600
 
     - name: Deployer la page de test
       ansible.builtin.copy:
