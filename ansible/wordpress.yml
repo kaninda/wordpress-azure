@@ -9,6 +9,11 @@
     mysql_password: "{{ lookup('env', 'TF_VAR_mysql_admin_password') }}"
 
   tasks:
+    - name: Vérifier que le mot de passe MySQL est fourni
+      ansible.builtin.assert:
+        that: mysql_password | length > 0
+        fail_msg: "Lance d'abord : read -s TF_VAR_mysql_admin_password && export TF_VAR_mysql_admin_password"
+
     - name: Installer Nginx, PHP-FPM, extensions WordPress et client MySQL
       ansible.builtin.apt:
         name:
@@ -31,3 +36,22 @@
         name: "php{{ php_version }}-fpm"
         state: started
         enabled: true
+
+    - name: Télécharger et décompresser WordPress
+      ansible.builtin.unarchive:
+        src: https://wordpress.org/latest.tar.gz
+        dest: /var/www
+        remote_src: true
+        owner: www-data
+        group: www-data
+        creates: "{{ wp_dir }}/wp-settings.php"
+
+    - name: Générer wp-config.php
+      ansible.builtin.template:
+        src: wp-config.php.j2
+        dest: "{{ wp_dir }}/wp-config.php"
+        owner: www-data
+        group: www-data
+        mode: "0640"
+
+
