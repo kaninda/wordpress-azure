@@ -1,0 +1,33 @@
+- name: Installer WordPress sur vm-app
+  hosts: az-app
+  become: true
+
+  vars:
+    php_version: "8.3"                 # version par défaut d'Ubuntu 24.04
+    wp_dir: /var/www/wordpress
+    mysql_fqdn: "{{ lookup('pipe', 'terraform -chdir=../terraform output -raw mysql_fqdn') }}"
+    mysql_password: "{{ lookup('env', 'TF_VAR_mysql_admin_password') }}"
+
+  tasks:
+    - name: Installer Nginx, PHP-FPM, extensions WordPress et client MySQL
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - php-fpm
+          - php-mysql
+          - php-curl
+          - php-gd
+          - php-mbstring
+          - php-xml
+          - php-zip
+          - php-intl
+          - mysql-client
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Démarrer PHP-FPM au boot
+      ansible.builtin.service:
+        name: "php{{ php_version }}-fpm"
+        state: started
+        enabled: true
