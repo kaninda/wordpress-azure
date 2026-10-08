@@ -21,3 +21,44 @@ resource "azurerm_storage_share" "media" {
   enabled_protocol   = "SMB"               # défaut, explicite pour la lecture
   access_tier        = "TransactionOptimized"
 }
+
+# « Annuaire » privé : stwpxxx.file.core.windows.net → IP privée du PE.
+# Nom imposé par Azure pour la sous-ressource file (une faute = résolution publique).
+resource "azurerm_private_dns_zone" "file" {
+  name                = "privatelink.file.core.windows.net"
+  resource_group_name = azurerm_resource_group.main.name
+}
+
+# Rend la zone visible depuis le VNet (sinon vm-app résout toujours l'IP publique).
+# Pas d'auto-registration : les enregistrements sont écrits par le PE, pas par les VMs.
+resource "azurerm_private_dns_zone_virtual_network_link" "file" {
+  name                  = "link-file"
+  resource_group_name   = azurerm_resource_group.main.name
+  private_dns_zone_name = azurerm_private_dns_zone.file.name
+  virtual_network_id    = azurerm_virtual_network.main.id
+  registration_enabled  = false
+}
+
+# Porte privée vers le storage : une NIC avec une IP de snet-pe.
+# 💰 Facturé à l'heure + au Go traité.
+resource "azurerm_private_endpoint" "file" {
+  name                = "pe-storage-file"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  subnet_id           = azurerm_subnet.pe.id
+
+  private_service_connection {
+    name                           = "psc-storage-file"
+    private_connection_resource_id = azurerm_storage_account.media.id
+    subresource_names              = ["file"] # un PE par sous-ressource : ce PE ne couvre pas le Blob
+    is_manual_connection           = false    # même subscription : approbation automatique
+  }
+
+  # Crée automatiquement l'enregistrement A du storage dans la zone privée.
+  private_dns_zone_group {
+    name                 = "default"
+    private_dns_zone_ids = [azurerm_private_dns_zone.file.id]
+  }
+
+  tags = local.common_tags
+}
