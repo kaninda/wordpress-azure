@@ -30,13 +30,13 @@ resource "azurerm_private_dns_zone" "file" {
 }
 
 # Rend la zone visible depuis le VNet (sinon vm-app résout toujours l'IP publique).
+# azurerm 5.x : la zone est référencée par son ID (le RG est inclus dedans).
 # Pas d'auto-registration : les enregistrements sont écrits par le PE, pas par les VMs.
 resource "azurerm_private_dns_zone_virtual_network_link" "file" {
-  name                  = "link-file"
-  resource_group_name   = azurerm_resource_group.main.name
-  private_dns_zone_name = azurerm_private_dns_zone.file.name
-  virtual_network_id    = azurerm_virtual_network.main.id
-  registration_enabled  = false
+  name                 = "link-file"
+  private_dns_zone_id  = azurerm_private_dns_zone.file.id
+  virtual_network_id   = azurerm_virtual_network.main.id
+  registration_enabled = false
 }
 
 # Porte privée vers le storage : une NIC avec une IP de snet-pe.
