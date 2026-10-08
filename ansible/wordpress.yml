@@ -8,6 +8,28 @@
     mysql_fqdn: "{{ lookup('pipe', 'terraform -chdir=../terraform output -raw mysql_fqdn') }}"
     mysql_password: "{{ lookup('env', 'TF_VAR_mysql_admin_password') }}"
 
+    # Lus dans les outputs Terraform, comme mysql_fqdn
+    storage_account: "{{ lookup('pipe', 'terraform -chdir=../terraform output -raw storage_account_name') }}"
+    storage_share: "{{ lookup('pipe', 'terraform -chdir=../terraform output -raw storage_share_name') }}"
+    # -raw affiche la valeur même si l'output est sensitive ⚠️ dette étape 06
+    storage_key: "{{ lookup('pipe', 'terraform -chdir=../terraform output -raw storage_account_key') }}"
+    uploads_dir: "{{ wp_dir }}/wp-content/uploads"
+    smb_cred_file: "/etc/smbcredentials/{{ storage_account }}.cred"
+
+    # Options de montage CIFS, jointes par des virgules (pas d'espace : fstab les sépare par espaces)
+    smb_mount_opts:
+      - vers=3.1.1                         # SMB chiffré (secure transfer required)
+      - "credentials={{ smb_cred_file }}"  # clé hors de fstab
+      - uid=www-data                       # CIFS ignore chown : propriétaire fixé au montage
+      - gid=www-data
+      - dir_mode=0775
+      - file_mode=0664
+      - serverino                          # inodes stables côté serveur
+      - nosharesock                        # connexion dédiée à ce montage
+      - actimeo=30                         # cache des attributs : 30 s
+      - _netdev                            # au boot, attendre le réseau
+      - nofail                             # boot OK même si le storage est injoignable
+
   tasks:
     - name: Vérifier que le mot de passe MySQL est fourni
       ansible.builtin.assert:
@@ -79,6 +101,49 @@
         name: nginx
         state: started
         enabled: true
+
+    # Client SMB du noyau Linux (fournit mount.cifs)
+    - name: Installer cifs-utils
+      ansible.builtin.apt:
+        name: cifs-utils
+        state: present
+
+    # Dossier lisible par root uniquement : il contient la clé du storage
+    - name: Créer le dossier des credentials SMB
+      ansible.builtin.file:
+        path: /etc/smbcredentials
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    # Fichier lu par mount.cifs : évite de mettre la clé en clair dans /etc/fstab (lisible par tous)
+    - name: Déposer les credentials SMB
+      ansible.builtin.copy:
+        dest: "{{ smb_cred_file }}"
+        content: |
+          username={{ storage_account }}
+          password={{ storage_key }}
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true   # n'affiche pas la clé dans la sortie Ansible
+
+    # Point de montage. Pas de owner/mode ici : une fois monté, ce sont les options
+    # du montage qui décident (un chmod sur CIFS casserait l'idempotence).
+    - name: Créer le point de montage
+      ansible.builtin.file:
+        path: "{{ uploads_dir }}"
+        state: directory
+
+    # state: mounted = écrit la ligne fstab ET monte immédiatement
+    - name: Monter le partage Azure Files sur uploads
+      ansible.posix.mount:
+        path: "{{ uploads_dir }}"
+        src: "//{{ storage_account }}.file.core.windows.net/{{ storage_share }}"
+        fstype: cifs
+        opts: "{{ smb_mount_opts | join(',') }}"
+        state: mounted
 
   handlers:
     - name: Recharger Nginx
