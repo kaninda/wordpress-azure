@@ -36,3 +36,20 @@ output "lb_public_ip" {
   description = "IP publique du LB"
   value       = azurerm_public_ip.lb.ip_address
 }
+
+# Lus par Ansible pour construire le chemin SMB //<compte>.file.core.windows.net/<partage>
+output "storage_account_name" {
+  value = azurerm_storage_account.media.name
+}
+
+output "storage_share_name" {
+  value = azurerm_storage_share.media.name
+}
+
+# Clé « passe-partout » du compte, utilisée pour le montage SMB.
+# sensitive : masquée dans plan/apply/output, MAIS stockée en clair dans le state.
+# ⚠️ Dette étape 06 (Key Vault / identité).
+output "storage_account_key" {
+  value     = azurerm_storage_account.media.primary_access_key
+  sensitive = true
+}
