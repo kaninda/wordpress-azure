@@ -21,7 +21,7 @@ déjà réalisée sur AWS, en Infrastructure as Code.
 | 02 | VM WordPress + jumpbox | VM, disques, IP publique | ~0.07 CHF | ✅ |
 | 03 | Load Balancer + Ansible | LB Standard, IP publique | ~0.14 CHF | ✅ |
 | 04 | MySQL Flexible + WordPress | MySQL Flexible | ~0.23 CHF *(provisoire)* | ✅ |
-| 05 | Stockage (Azure Files) | Storage account, private endpoint | — | 🔄 |
+| 05 | Stockage (Azure Files) | Storage account, private endpoint | à compléter (J+1) | ✅ |
 | 06 | Identité / secrets | Key Vault | — | ⏳ |
 | 07 | Monitoring / backup | Log Analytics, Backup | — | ⏳ |
 | 08 | Azure Bastion | Bastion | — | ⏳ |
@@ -109,6 +109,7 @@ terraform destroy   # en fin de session
 | snet-data | 10.0.2.0/24 | 251 | MySQL Flexible (étape 04) |
 | snet-jumpbox | 10.0.3.0/27 | 27 | Jumpbox, SSH depuis le poste admin |
 | AzureBastionSubnet | 10.0.4.0/26 | — | Réservé, étape 08 (non créé) |
+| snet-pe | 10.0.5.0/27 | 27 | Private endpoints (storage, puis Key Vault) — étape 05 |
 
 VNet : `10.0.0.0/16`, région Switzerland North.
 
@@ -232,3 +233,44 @@ jumpbox ──3306──► ✗ bloqué par nsg-data
 - Mot de passe MySQL en clair dans le state → `administrator_password_wo` (write-only) disponible en azurerm 5.x, ou Key Vault (étape 06).
 - WordPress se connecte avec le compte admin MySQL → utilisateur dédié limité à la base `wordpress`.
 - Site en HTTP uniquement (HTTPS hors périmètre).
+
+## Étape 05 — Stockage (Azure Files)
+
+### Ce qui est ajouté
+- **Storage account** `stwp<suffixe>` : StorageV2, Standard, LRS, secure transfer (HTTPS + SMB chiffré),
+  TLS 1.2 min., accès public au blob désactivé, **accès réseau public désactivé**.
+- **File share** `wp-uploads` : SMB, quota 1 Go, Transaction optimized.
+- **Subnet `snet-pe`** (10.0.5.0/27) dédié aux private endpoints.
+- **Private endpoint** `pe-storage-file` (sous-ressource `file`) + zone `privatelink.file.core.windows.net` liée au VNet.
+- **Ansible** : cifs-utils, credentials root 600, montage persistant (fstab) sur `wp-content/uploads` (uid/gid www-data).
+
+```
+vm-app ──445 / SMB 3.1.1──► 10.0.5.4 (PE, snet-pe) ──► stwpxxx / wp-uploads
+   DNS : stwpxxx.file.core.windows.net → CNAME privatelink → 10.0.5.4
+Mac ──► stwpxxx.file.core.windows.net (IP publique) ──► ✗ 403 (accès public désactivé)
+```
+
+### Choix
+- **Azure Files plutôt que Blob** : WordPress écrit sur un système de fichiers → aucun plugin (équivalent EFS).
+- **Private endpoint plutôt que service endpoint** : IP privée, accès public fermable, même schéma que MySQL.
+- **`storage_account_id`** sur le partage : Terraform passe par ARM → apply/destroy OK avec l'accès public fermé.
+- **azurerm 5.x** : `public_network_access = "Disabled"` (le booléen est déprécié), lien DNS via `private_dns_zone_id`.
+- **Options de montage** jointes par `join(',')` : aucun espace dans fstab.
+
+### Tests réalisés
+| Test | Résultat |
+|---|---|
+| `mount` depuis vm-app | `addr=10.0.5.4` (PE), `vers=3.1.1`, `uid=33` (www-data) |
+| Upload d'une image dans WordPress | 4 fichiers (original + miniatures) dans `wp-uploads/2026/10` |
+| Storage browser (accès public ouvert) | fichiers visibles (Access key) |
+| Storage browser en Entra ID | 403 : Owner ≠ rôle data |
+| Reboot de vm-app | partage remonté via fstab, image toujours affichée |
+| Accès public désactivé, Storage browser depuis le Mac | 403 réseau |
+| Après fermeture, `ls` depuis vm-app | fichiers accessibles via le PE |
+| Playbook, 2e passage | `changed=0` |
+| `destroy` avec accès public fermé | OK (plan de contrôle ARM) |
+
+### Dette
+- Clé du storage account en clair dans le state, dans l'output et sur la VM → identité / Key Vault (étape 06).
+- Limite d'upload PHP à 2 Mo (`upload_max_filesize`).
+- Bonus non réalisé : snapshot du partage, soft delete, SAS, lifecycle (Blob).
