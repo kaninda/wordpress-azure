@@ -62,6 +62,17 @@ resource "azurerm_subnet" "jumpbox" {
   default_outbound_access_enabled = false
 }
 
+# Subnet dédié aux private endpoints (storage à l'étape 05, Key Vault à l'étape 06).
+# 10.0.5.0/27 : hors de la plage réservée à Bastion (10.0.4.0/26).
+# Pas de NSG : non appliqué aux PE tant que les network policies sont désactivées.
+resource "azurerm_subnet" "pe" {
+  name                            = "snet-pe"
+  resource_group_name             = azurerm_resource_group.main.name
+  virtual_network_name            = azurerm_virtual_network.main.name
+  address_prefixes                = ["10.0.5.0/27"]
+  default_outbound_access_enabled = false # cohérent avec les autres subnets
+}
+
 #SG - Jumpbox
 resource "azurerm_network_security_group" "jumpbox" {
   name                = "nsg-jumpbox"
