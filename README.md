@@ -14,19 +14,20 @@ déjà réalisée sur AWS, en Infrastructure as Code.
 
 ## Roadmap
 
-| Étape | Contenu | Ressources payantes | Coût estimé | Statut |
+| Étape | Contenu | Ressources payantes | Coût constaté / session | Statut |
 |---|---|---|---|---|
-| 00 | Socle : repo, provider, RG, budget | aucune (RG gratuit) | 0 | ✅ |
-| 01 | Réseau : VNet, subnets, NSG, NAT Gateway | NAT Gateway | à estimer | ✅ |
-| 02 | VM WordPress + jumpbox | VM, disques, IP publique | à estimer | ✅ |
-| 03 | Load Balancer + Ansible | LB Standard, IP publique | à estimer | ✅ |
-| 04 | MySQL Flexible + WordPress | MySQL Flexible | à estimer | ✅ |
-| 05 | Azure Bastion | Bastion | à estimer | ⏳ |
-| 06 | Stockage | Storage account | à estimer | ⏳ |
-| 07 | Identité | — | à estimer | ⏳ |
-| 08 | Monitoring / backup | Log Analytics, Backup | à estimer | ⏳ |
+| 00 | Socle : repo, provider, RG, budget | aucune (RG gratuit) | 0.00 CHF | ✅ |
+| 01 | Réseau : VNet, subnets, NSG, NAT Gateway | NAT Gateway | ~0.05 CHF | ✅ |
+| 02 | VM WordPress + jumpbox | VM, disques, IP publique | ~0.07 CHF | ✅ |
+| 03 | Load Balancer + Ansible | LB Standard, IP publique | ~0.14 CHF | ✅ |
+| 04 | MySQL Flexible + WordPress | MySQL Flexible | ~0.23 CHF *(provisoire)* | ✅ |
+| 05 | Stockage (Azure Files) | Storage account, private endpoint | — | 🔄 |
+| 06 | Identité / secrets | Key Vault | — | ⏳ |
+| 07 | Monitoring / backup | Log Analytics, Backup | — | ⏳ |
+| 08 | Azure Bastion | Bastion | — | ⏳ |
 
-Coûts à estimer avec la [calculatrice Azure](https://azure.microsoft.com/pricing/calculator/).
+Coût constaté : Cost Management → Cost analysis, granularité *Daily*, groupé par tag `etape`
+(coûts cumulés du lab sur une session, `destroy` inclus ; remontée avec 8 à 24 h de retard).
 Règle : `terraform destroy` en fin de chaque session.
 
 ## Démarrage rapide
@@ -107,7 +108,7 @@ terraform destroy   # en fin de session
 | snet-app | 10.0.1.0/24 | 251 | VM WordPress, sortie via NAT Gateway |
 | snet-data | 10.0.2.0/24 | 251 | MySQL Flexible (étape 04) |
 | snet-jumpbox | 10.0.3.0/27 | 27 | Jumpbox, SSH depuis le poste admin |
-| AzureBastionSubnet | 10.0.4.0/26 | — | Réservé, étape 05 (non créé) |
+| AzureBastionSubnet | 10.0.4.0/26 | — | Réservé, étape 08 (non créé) |
 
 VNet : `10.0.0.0/16`, région Switzerland North.
 
@@ -228,6 +229,6 @@ jumpbox ──3306──► ✗ bloqué par nsg-data
 <img src="docs/test_wordpress_article.png" alt="Article publié via le Load Balancer" width="700">
 
 ### Dette
-- Mot de passe MySQL en clair dans le state → `administrator_password_wo` (write-only) disponible en azurerm 5.x, ou Key Vault (étape 07).
+- Mot de passe MySQL en clair dans le state → `administrator_password_wo` (write-only) disponible en azurerm 5.x, ou Key Vault (étape 06).
 - WordPress se connecte avec le compte admin MySQL → utilisateur dédié limité à la base `wordpress`.
 - Site en HTTP uniquement (HTTPS hors périmètre).
