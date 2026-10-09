@@ -92,6 +92,27 @@
         group: www-data
         creates: "{{ wp_dir }}/wp-settings.php"
 
+    # Dépendance Python du module community.mysql, côté vm-app
+    - name: Installer PyMySQL
+      ansible.builtin.apt:
+        name: python3-pymysql
+        state: present
+
+    # Compte dédié : droits limités à la base wordpress, depuis snet-app uniquement
+    - name: Utilisateur MySQL dédié à WordPress
+      community.mysql.mysql_user:
+        login_host: "{{ mysql_fqdn }}"
+        login_user: wpadmin
+        login_password: "{{ kv['mysql-admin-password'] }}"
+        ca_cert: /etc/ssl/certs/ca-certificates.crt # active TLS (require_secure_transport)
+        name: wpuser
+        host: "10.0.1.%"                # snet-app
+        password: "{{ kv['wp-db-password'] }}"
+        update_password: on_create      # idempotent : pas de réécriture à chaque run
+        priv: "wordpress.*:ALL"
+        state: present
+      no_log: true
+      
     - name: Générer wp-config.php
       ansible.builtin.template:
         src: wp-config.php.j2
