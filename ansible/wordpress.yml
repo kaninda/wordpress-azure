@@ -6,15 +6,15 @@
     php_version: "8.3"                 # version par défaut d'Ubuntu 24.04
     wp_dir: /var/www/wordpress
     mysql_fqdn: "{{ lookup('pipe', 'terraform -chdir=../terraform output -raw mysql_fqdn') }}"
-    mysql_password: "{{ lookup('env', 'TF_VAR_mysql_admin_password') }}"
+    mysql_password: "{{ kv['mysql-admin-password'] }}" # temporaire : remplacé par wpuser en 12c
 
     # Lus dans les outputs Terraform, comme mysql_fqdn
     storage_account: "{{ lookup('pipe', 'terraform -chdir=../terraform output -raw storage_account_name') }}"
     storage_share: "{{ lookup('pipe', 'terraform -chdir=../terraform output -raw storage_share_name') }}"
-    # -raw affiche la valeur même si l'output est sensitive ⚠️ dette étape 06
-    storage_key: "{{ lookup('pipe', 'terraform -chdir=../terraform output -raw storage_account_key') }}"
+    storage_key: "{{ kv['storage-account-key'] }}" # lu dans Key Vault (set_fact plus bas)
     uploads_dir: "{{ wp_dir }}/wp-content/uploads"
     smb_cred_file: "/etc/smbcredentials/{{ storage_account }}.cred"
+    kv_name: "{{ lookup('pipe', 'terraform -chdir=../terraform output -raw key_vault_name') }}"
 
     # Options de montage CIFS, jointes par des virgules (pas d'espace : fstab les sépare par espaces)
     smb_mount_opts:
@@ -31,10 +31,34 @@
       - nofail                             # boot OK même si le storage est injoignable
 
   tasks:
-    - name: Vérifier que le mot de passe MySQL est fourni
-      ansible.builtin.assert:
-        that: mysql_password | length > 0
-        fail_msg: "Lance d'abord : read -s TF_VAR_mysql_admin_password && export TF_VAR_mysql_admin_password"
+    # Token de la Managed Identity, demandé à l'IMDS (exécuté SUR vm-app)
+    - name: Token Managed Identity (IMDS)
+      ansible.builtin.uri:
+        url: "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://vault.azure.net"
+        headers:
+          Metadata: "true"
+      register: mi_token
+      no_log: true # ne jamais afficher le token
+
+    # Lecture des 4 secrets via le PE du Key Vault
+    - name: Lecture des secrets Key Vault
+      ansible.builtin.uri:
+        url: "https://{{ kv_name }}.vault.azure.net/secrets/{{ item }}?api-version=7.4"
+        headers:
+          Authorization: "Bearer {{ mi_token.json.access_token }}"
+      loop:
+        - storage-account-key
+        - mysql-admin-password
+        - wp-db-password
+        - wp-salt-seed
+      register: kv_secrets
+      no_log: true # ne jamais afficher les secrets
+
+    # Dictionnaire nom → valeur, ex. kv['wp-db-password']
+    - name: Secrets en variable
+      ansible.builtin.set_fact:
+        kv: "{{ dict(kv_secrets.results | map(attribute='item') | zip(kv_secrets.results | map(attribute='json') | map(attribute='value'))) }}"
+      no_log: true
 
     - name: Installer Nginx, PHP-FPM, extensions WordPress et client MySQL
       ansible.builtin.apt:
