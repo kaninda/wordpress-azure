@@ -79,25 +79,3 @@ resource "azurerm_role_assignment" "kv_user_app" {
   principal_id         = azurerm_linux_virtual_machine.app.identity[0].principal_id
 }
 
-# Clé du storage, lue par vm-app via sa Managed Identity
-resource "azurerm_key_vault_secret" "storage_key" {
-  name         = "storage-account-key"
-  key_vault_id = azurerm_key_vault.main.id
-
-  # Write-only : envoyée à Azure, jamais écrite dans le state
-  value_wo         = azurerm_storage_account.media.primary_access_key
-  value_wo_version = 1 # à incrémenter pour pousser une nouvelle valeur
-
-  # 1. à la création : attendre que ton rôle Officer existe
-  # 2. au destroy    : supprimer le secret AVANT de retirer ton rôle (sinon 403)
-  depends_on = [azurerm_role_assignment.kv_officer_admin]
-}
-
-# Mot de passe admin MySQL, lu par vm-app (Ansible).
-resource "azurerm_key_vault_secret" "mysql_admin" {
-  name             = "mysql-admin-password"
-  key_vault_id     = azurerm_key_vault.main.id
-  value_wo         = ephemeral.random_password.mysql_admin.result
-  value_wo_version = 1 # incrémenter AVEC celui de MySQL
-  depends_on       = [azurerm_role_assignment.kv_officer_admin]
-}

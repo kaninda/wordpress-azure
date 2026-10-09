@@ -47,15 +47,7 @@ resource "azurerm_mysql_flexible_database" "wordpress" {
   collation           = "utf8mb4_unicode_ci"
 }
 
-# Mot de passe généré à chaque run, jamais écrit dans le state
-ephemeral "random_password" "mysql_admin" {
-  length           = 24
-  min_upper        = 2
-  min_lower        = 2
-  min_numeric      = 2
-  min_special      = 2
-  override_special = "-_.!%"
-}
+
 
 output "mysql_fqdn" {
   value = azurerm_mysql_flexible_server.main.fqdn
