@@ -22,7 +22,7 @@ resource "azurerm_mysql_flexible_server" "main" {
   location                          = azurerm_resource_group.main.location
   administrator_login               = "wpadmin"
   administrator_password_wo         = ephemeral.random_password.mysql_admin.result
-  administrator_password_wo_version = 1 # incrémenter AVEC celui du secret
+  administrator_password_wo_version = 2 # incrémenter AVEC celui du secret
   version                           = "8.4"
   sku_name                          = "B_Standard_B1ms"
   backup_retention_days             = 1

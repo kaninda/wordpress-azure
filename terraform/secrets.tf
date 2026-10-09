@@ -43,7 +43,7 @@ resource "azurerm_key_vault_secret" "mysql_admin" {
   name             = "mysql-admin-password"
   key_vault_id     = azurerm_key_vault.main.id
   value_wo         = ephemeral.random_password.mysql_admin.result
-  value_wo_version = 1 # incrémenter AVEC administrator_password_wo_version (mysql.tf)
+  value_wo_version = 2 # incrémenter AVEC administrator_password_wo_version (mysql.tf)
   depends_on       = [azurerm_role_assignment.kv_officer_admin]
 }
 
