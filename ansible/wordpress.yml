@@ -190,9 +190,24 @@
         opts: "{{ smb_mount_opts | join(',') }}"
         state: mounted
 
+    # Surcharge PHP-FPM : chargé après php.ini (préfixe 99)
+    - name: Limite d'upload PHP
+      ansible.builtin.copy:
+        dest: "/etc/php/{{ php_version }}/fpm/conf.d/99-uploads.ini"
+        content: |
+          upload_max_filesize = 64M
+          post_max_size = 64M
+        mode: "0644"
+      notify: Redémarrer PHP-FPM
+
   handlers:
     - name: Recharger Nginx
       ansible.builtin.service:
         name: nginx
         state: reloaded
+
+    - name: Redémarrer PHP-FPM
+      ansible.builtin.service:
+        name: "php{{ php_version }}-fpm"
+        state: restarted
 

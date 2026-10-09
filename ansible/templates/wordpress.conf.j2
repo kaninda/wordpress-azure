@@ -1,5 +1,6 @@
 server {
 listen 80 default_server;
+client_max_body_size 64m;
 server_name _;
 root {{ wp_dir }};
 index index.php;
