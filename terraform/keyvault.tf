@@ -64,3 +64,17 @@ resource "azurerm_private_endpoint" "kv" {
     private_dns_zone_ids = [azurerm_private_dns_zone.kv.id]
   }
 }
+
+# Toi : lire et écrire les secrets (Terraform les écrit depuis ton Mac)
+resource "azurerm_role_assignment" "kv_officer_admin" {
+  scope                = azurerm_key_vault.main.id # portée = ce vault seulement
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+# vm-app : lecture seule des secrets
+resource "azurerm_role_assignment" "kv_user_app" {
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_linux_virtual_machine.app.identity[0].principal_id
+}
