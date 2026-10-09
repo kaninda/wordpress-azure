@@ -109,4 +109,8 @@ resource "azurerm_linux_virtual_machine" "app" {
     sku       = "server"
     version   = "latest"
   }
+  # Badge Entra de la VM, créé et supprimé avec elle
+  identity {
+    type = "SystemAssigned"
+  }
 }
