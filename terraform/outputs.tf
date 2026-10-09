@@ -46,10 +46,7 @@ output "storage_share_name" {
   value = azurerm_storage_share.media.name
 }
 
-# Clé « passe-partout » du compte, utilisée pour le montage SMB.
-# sensitive : masquée dans plan/apply/output, MAIS stockée en clair dans le state.
-# ⚠️ Dette étape 06 (Key Vault / identité).
-output "storage_account_key" {
-  value     = azurerm_storage_account.media.primary_access_key
-  sensitive = true
+# Nom du vault pour Ansible (pas un secret)
+output "key_vault_name" {
+  value = azurerm_key_vault.main.name
 }
