@@ -1,17 +1,17 @@
 <?php
 // Généré par Ansible — ne pas modifier à la main
 define('DB_NAME', 'wordpress');
-define('DB_USER', 'wpadmin');
-define('DB_PASSWORD', '{{ mysql_password }}');
+define('DB_USER', 'wpuser'); // compte dédié (12b)
+define('DB_PASSWORD', '{{ kv['wp-db-password'] }}'); // lu dans Key Vault
 define('DB_HOST', '{{ mysql_fqdn }}');
 define('DB_CHARSET', 'utf8mb4');
 define('DB_COLLATE', '');
 define('MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL);   // TLS imposé par Azure
 
-// Clés de sécurité (cookies de session), dérivées du mot de passe : stables d'un passage à l'autre
+// Clés de sécurité (cookies de session), dérivées de la graine Key Vault : stables d'un passage à l'autre
 {% for key in ['AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY',
                'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT'] %}
-define('{{ key }}', '{{ (mysql_password ~ key) | hash('sha256') }}');
+define('{{ key }}', '{{ (kv['wp-salt-seed'] ~ key) | hash('sha256') }}');
 {% endfor %}
 
 $table_prefix = 'wp_';

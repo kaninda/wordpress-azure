@@ -6,7 +6,6 @@
     php_version: "8.3"                 # version par défaut d'Ubuntu 24.04
     wp_dir: /var/www/wordpress
     mysql_fqdn: "{{ lookup('pipe', 'terraform -chdir=../terraform output -raw mysql_fqdn') }}"
-    mysql_password: "{{ kv['mysql-admin-password'] }}" # temporaire : remplacé par wpuser en 12c
 
     # Lus dans les outputs Terraform, comme mysql_fqdn
     storage_account: "{{ lookup('pipe', 'terraform -chdir=../terraform output -raw storage_account_name') }}"
@@ -112,7 +111,7 @@
         priv: "wordpress.*:ALL"
         state: present
       no_log: true
-      
+
     - name: Générer wp-config.php
       ansible.builtin.template:
         src: wp-config.php.j2
@@ -120,6 +119,7 @@
         owner: www-data
         group: www-data
         mode: "0640"
+      no_log: true
 
     - name: Déployer la config Nginx WordPress
       ansible.builtin.template:
