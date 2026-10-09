@@ -20,9 +20,9 @@ déjà réalisée sur AWS, en Infrastructure as Code.
 | 01 | Réseau : VNet, subnets, NSG, NAT Gateway | NAT Gateway | ~0.05 CHF | ✅ |
 | 02 | VM WordPress + jumpbox | VM, disques, IP publique | ~0.07 CHF | ✅ |
 | 03 | Load Balancer + Ansible | LB Standard, IP publique | ~0.14 CHF | ✅ |
-| 04 | MySQL Flexible + WordPress | MySQL Flexible | ~0.23 CHF *(provisoire)* | ✅ |
-| 05 | Stockage (Azure Files) | Storage account, private endpoint | à compléter (J+1) | ✅ |
-| 06 | Identité / secrets | Key Vault | — | ⏳ |
+| 04 | MySQL Flexible + WordPress | MySQL Flexible | ~0.23 CHF | ✅ |
+| 05 | Stockage (Azure Files) | Storage account, private endpoint | ~0.51 CHF | ✅ |
+| 06 | Identité / secrets | Key Vault, private endpoint | à compléter (J+1) | ✅ |
 | 07 | Monitoring / backup | Log Analytics, Backup | — | ⏳ |
 | 08 | Azure Bastion | Bastion | — | ⏳ |
 
@@ -33,46 +33,41 @@ Règle : `terraform destroy` en fin de chaque session.
 ## Démarrage rapide
 
 ```
-az login → export mdp MySQL → terraform apply → ~/.ssh/config → ansible-playbook → tests → terraform destroy
+az account show → terraform apply → ~/.ssh/config → ansible-playbook → tests → terraform destroy
 ```
 
 **Prérequis** : Terraform ~> 1.16, Azure CLI, Ansible (`brew install ansible`),
 clé SSH `~/.ssh/az-wp-lab`, hôtes `az-jumpbox` et `az-app` dans `~/.ssh/config`.
-
-⚠️ Tout se fait **dans le même terminal** : le mot de passe MySQL n'existe que dans sa session.
+Aucun mot de passe à fournir : Terraform les génère et les dépose dans Key Vault (étape 06).
 
 ```bash
-# 1. Authentification + mot de passe MySQL (jamais dans un fichier)
-az login
-read -s TF_VAR_mysql_admin_password && export TF_VAR_mysql_admin_password
-[ -n "$TF_VAR_mysql_admin_password" ] && echo "OK"
+# 1. Authentification (az login seulement si la session a expiré)
+az account show
 
-# 2. Infrastructure  ⚠️ facturé à l'heure dès l'apply (~5 min dont MySQL)
+# 2. Infrastructure  ⚠️ facturé à l'heure dès l'apply
 cd terraform
 terraform init
-terraform apply
-terraform output            # jumpbox_public_ip, lb_public_ip, mysql_fqdn…
+terraform apply             # 403 sur un secret au 1er apply → attendre 1-2 min, relancer
+terraform output            # jumpbox_public_ip, lb_public_ip, key_vault_name…
 
 # 3. SSH : l'IP de la jumpbox change à chaque apply
 #    → reporter jumpbox_public_ip dans HostName de az-jumpbox (~/.ssh/config)
 ssh-keygen -R 10.0.1.4
 ssh az-jumpbox exit && ssh az-app exit
 
-# 4. Configuration de la VM (depuis ansible/ : le playbook lit les outputs Terraform)
+# 4. Configuration de la VM (vm-app lit ses secrets dans Key Vault)
 cd ../ansible
 ansible-playbook wordpress.yml      # 2e passage : changed=0
 
 # 5. Vérification
 curl http://$(terraform -chdir=../terraform output -raw lb_public_ip)/healthz   # → ok
-# puis http://<lb_public_ip> dans le navigateur (assistant WordPress)
 
 # 6. Fin de session : obligatoire
 cd ../terraform && terraform destroy
-unset TF_VAR_mysql_admin_password
 ```
 
 > `admin_ip` (terraform.tfvars) doit correspondre à ton IP publique (`curl ifconfig.me`),
-> sinon le SSH vers la jumpbox est bloqué.
+> sinon le SSH vers la jumpbox **et** l'écriture des secrets dans Key Vault sont bloqués.
 
 
 ## Étape 00 — Socle
@@ -230,8 +225,8 @@ jumpbox ──3306──► ✗ bloqué par nsg-data
 <img src="docs/test_wordpress_article.png" alt="Article publié via le Load Balancer" width="700">
 
 ### Dette
-- Mot de passe MySQL en clair dans le state → `administrator_password_wo` (write-only) disponible en azurerm 5.x, ou Key Vault (étape 06).
-- WordPress se connecte avec le compte admin MySQL → utilisateur dédié limité à la base `wordpress`.
+- ~~Mot de passe MySQL en clair dans le state~~ → ✅ traité à l'étape 06 (`administrator_password_wo` + Key Vault).
+- ~~WordPress se connecte avec le compte admin MySQL~~ → ✅ traité à l'étape 06 (utilisateur `wpuser`).
 - Site en HTTP uniquement (HTTPS hors périmètre).
 
 ## Étape 05 — Stockage (Azure Files)
@@ -271,6 +266,67 @@ Mac ──► stwpxxx.file.core.windows.net (IP publique) ──► ✗ 403 (acc
 | `destroy` avec accès public fermé | OK (plan de contrôle ARM) |
 
 ### Dette
-- Clé du storage account en clair dans le state, dans l'output et sur la VM → identité / Key Vault (étape 06).
-- Limite d'upload PHP à 2 Mo (`upload_max_filesize`).
+- ~~Clé du storage dans l'output et passée par Ansible~~ → ✅ étape 06 : lue dans Key Vault par la VM.
+  Elle reste dans le state comme attribut du storage account (inévitable).
+- ~~Limite d'upload PHP à 2 Mo~~ → ✅ étape 06 : 64 Mo.
 - Bonus non réalisé : snapshot du partage, soft delete, SAS, lifecycle (Blob).
+
+## Étape 06 — Identité et secrets (Key Vault + Managed Identity)
+
+### Ce qui est ajouté
+- **Key Vault** `kv-wp-<suffixe>` : Standard, modèle **RBAC**, soft delete 7 jours, purge protection désactivée,
+  accès public refusé sauf `admin_ip` (Terraform écrit les secrets depuis le poste admin).
+- **Private endpoint** `pe-keyvault` (sous-ressource `vault`) dans snet-pe + zone `privatelink.vaultcore.azure.net`.
+- **Managed Identity** system-assigned sur vm-app.
+- **RBAC** (portée : le vault) : poste admin = `Key Vault Secrets Officer` · vm-app = `Key Vault Secrets User`.
+- **`secrets.tf`** : 3 `ephemeral "random_password"` + 4 secrets en `value_wo`
+  (`storage-account-key`, `mysql-admin-password`, `wp-db-password`, `wp-salt-seed`).
+- **MySQL** : `administrator_password_wo` ; variable `mysql_admin_password` supprimée (plus de `TF_VAR`).
+- **Ansible** : token IMDS + lecture des secrets (`uri`, `no_log`), utilisateur `wpuser`
+  (`wordpress.*`, depuis `10.0.1.%`), clés WordPress dérivées de la graine, upload 64 Mo (Nginx + PHP).
+- **Outputs** : `key_vault_name` ajouté, `storage_account_key` supprimé.
+
+```
+Terraform ──value_wo──► Key Vault ◄──PE 10.0.5.5── vm-app ◄── token ◄── IMDS (Managed Identity)
+(rien dans le state)                                  │
+                                                      ├──► MySQL (wpuser, TLS)
+                                                      └──► Azure Files (clé SMB)
+Mac ──vault.azure.net──► Key Vault : ip_rules = admin_ip (écriture des secrets)
+```
+
+### Choix
+- **RBAC plutôt qu'access policies** : modèle recommandé ; un Contributor ne peut pas s'octroyer l'accès aux secrets.
+- **Purge protection OFF + nom aléatoire** : `destroy`/`apply` sans blocage (en production : ON).
+- **System-assigned** : une seule VM, identité liée à son cycle de vie.
+- **Ephemeral + write-only** : mots de passe générés pendant le run, jamais écrits dans le state.
+- **Une graine pour les 8 clés WordPress** : 1 secret au lieu de 8, playbook idempotent.
+- **`99-uploads.ini`** plutôt qu'une édition de `php.ini` : surcharge simple et idempotente.
+
+### Tests réalisés
+| Test | Résultat |
+|---|---|
+| `nslookup` du vault depuis le Mac | IP publique (pas de zone privée) |
+| `nslookup` depuis vm-app et la jumpbox | `10.0.5.5` (PE) |
+| Lecture d'un secret depuis vm-app (token IMDS) | OK |
+| Token IMDS depuis la jumpbox | `invalid_request` (aucune identité) |
+| Lecture du secret depuis la jumpbox | **401** (non authentifiée) |
+| Assistant WordPress avec `wpuser` | OK |
+| Upload d'une image > 2 Mo | OK |
+| Playbook, 2e passage | `changed=0` |
+| State : `administrator_password` / `_wo` | `null` / `null` |
+| State : valeur des 4 secrets | vide |
+| `grep` du mot de passe `wpuser` dans le state et le backup | 0 occurrence |
+| `destroy` | OK, vault purgé |
+
+### Problèmes rencontrés
+- **403 `ForbiddenByFirewall`** : IP publique changée en cours de session → retour sur la bonne IP, `apply` relancé.
+- **`Access denied` pour `wpadmin`** : apply interrompu après la création de MySQL → mot de passe différent
+  dans MySQL et dans Key Vault. Correction : incrémenter **ensemble** `administrator_password_wo_version`
+  et `value_wo_version` (= procédure de rotation).
+
+### Dette
+- Clé du storage dans le state (attribut de `azurerm_storage_account`).
+- `community.mysql.mysql_user` déprécié → `ansible.mysql.mysql_user`.
+- Certificat TLS MySQL non vérifié côté PHP (optionnel).
+- Rotation manuelle des secrets (incrément des versions).
+- Site en HTTP uniquement.
