@@ -22,7 +22,7 @@ déjà réalisée sur AWS, en Infrastructure as Code.
 | 03 | Load Balancer + Ansible | LB Standard, IP publique | ~0.14 CHF | ✅ |
 | 04 | MySQL Flexible + WordPress | MySQL Flexible | ~0.23 CHF | ✅ |
 | 05 | Stockage (Azure Files) | Storage account, private endpoint | ~0.51 CHF | ✅ |
-| 06 | Identité / secrets | Key Vault, private endpoint | à compléter (J+1) | ✅ |
+| 06 | Identité / secrets | Key Vault, private endpoint | ~0.34 CHF | ✅ |
 | 07 | Monitoring / backup | Log Analytics, Backup | — | ⏳ |
 | 08 | Azure Bastion | Bastion | — | ⏳ |
 
