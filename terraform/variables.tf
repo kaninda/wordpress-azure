@@ -19,7 +19,7 @@ variable "owner" {
 variable "etape" {
   description = "Étape courante du lab"
   type        = string
-  default     = "05-stockage"
+  default     = "06-identite"
 }
 
 variable "admin_ip" {
