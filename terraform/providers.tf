@@ -8,5 +8,9 @@ provider "azurerm" {
       purge_soft_deleted_secrets_on_destroy = true # destroy → secret purgé
       recover_soft_deleted_secrets          = true # apply → récupère un secret resté en corbeille
     }
+    log_analytics_workspace {
+      # destroy = suppression définitive (pas de soft delete 14 j)
+      permanently_delete_on_destroy = true
+    }
   }
 }
