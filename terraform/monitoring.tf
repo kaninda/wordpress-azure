@@ -75,3 +75,76 @@ resource "azurerm_monitor_data_collection_rule_association" "vm_app" {
   data_collection_rule_id = azurerm_monitor_data_collection_rule.vm_app.id
 }
 
+# Qui prévenir
+resource "azurerm_monitor_action_group" "email" {
+  name                = "ag-wp-email"
+  resource_group_name = azurerm_resource_group.main.name
+  short_name          = "wp-email" # 12 caractères max
+
+  email_receiver {
+    name                    = "admin"
+    email_address           = var.alert_email
+    use_common_alert_schema = true
+  }
+}
+
+# Probe du LB < 100 % → un backend est KO
+resource "azurerm_monitor_metric_alert" "lb_probe" {
+  name                = "alert-lb-probe"
+  resource_group_name = azurerm_resource_group.main.name
+  scopes              = [azurerm_lb.main.id]
+  severity            = 1
+  frequency           = "PT1M" # évaluation chaque minute
+  window_size         = "PT5M" # sur 5 min glissantes
+
+  criteria {
+    metric_namespace = "Microsoft.Network/loadBalancers"
+    metric_name      = "DipAvailability" # = Health Probe Status
+    aggregation      = "Average"
+    operator         = "LessThan"
+    threshold        = 100
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.email.id
+  }
+}
+
+# CPU de vm-app > 80 %
+resource "azurerm_monitor_metric_alert" "vm_cpu" {
+  name                = "alert-vm-app-cpu"
+  resource_group_name = azurerm_resource_group.main.name
+  scopes              = [azurerm_linux_virtual_machine.app.id]
+  severity            = 2
+  frequency           = "PT1M"
+  window_size         = "PT5M"
+
+  criteria {
+    metric_namespace = "Microsoft.Compute/virtualMachines"
+    metric_name      = "Percentage CPU"
+    aggregation      = "Average"
+    operator         = "GreaterThan"
+    threshold        = 80
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.email.id
+  }
+}
+
+# Modification d'une règle NSG dans le RG
+resource "azurerm_monitor_activity_log_alert" "nsg_change" {
+  name                = "alert-nsg-rule-write"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = "global"
+  scopes              = [azurerm_resource_group.main.id]
+
+  criteria {
+    category       = "Administrative"
+    operation_name = "Microsoft.Network/networkSecurityGroups/securityRules/write"
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.email.id
+  }
+}

@@ -39,4 +39,9 @@ variable "vm_size" {
   default     = "Standard_D2als_v6"
 }
 
+variable "alert_email" {
+  description = "Email qui reçoit les alertes"
+  type        = string
+}
+
 
