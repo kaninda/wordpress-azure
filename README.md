@@ -23,7 +23,7 @@ déjà réalisée sur AWS, en Infrastructure as Code.
 | 04 | MySQL Flexible + WordPress | MySQL Flexible | ~0.23 CHF | ✅ |
 | 05 | Stockage (Azure Files) | Storage account, private endpoint | ~0.51 CHF | ✅ |
 | 06 | Identité / secrets | Key Vault, private endpoint | ~0.34 CHF | ✅ |
-| 07 | Monitoring / backup | Log Analytics, Backup | — | ⏳ |
+| 07 | Monitoring / backup | Log Analytics, Backup | à compléter (J+1) | 🔄 session 1 ✅ |
 | 08 | Azure Bastion | Bastion | — | ⏳ |
 
 Coût constaté : Cost Management → Cost analysis, granularité *Daily*, groupé par tag `etape`
@@ -330,3 +330,62 @@ Mac ──vault.azure.net──► Key Vault : ip_rules = admin_ip (écriture de
 - Certificat TLS MySQL non vérifié côté PHP (optionnel).
 - Rotation manuelle des secrets (incrément des versions).
 - Site en HTTP uniquement.
+
+## Étape 07 — Monitoring et backup
+
+### Session 1 : monitoring
+
+**Ajouté** (`monitoring.tf`)
+- **Log Analytics workspace** `law-wordpress-azure` : PerGB2018, rétention 30 j, daily cap 0.1 Go,
+  suppression définitive au destroy (`permanently_delete_on_destroy`).
+- **Diagnostic settings** : Key Vault (`AuditEvent`) et Activity log de la subscription (`Administrative`).
+- **AMA + DCR** sur vm-app : Perf (CPU, mémoire, disque) + Syslog (Warning et plus).
+- **Action group** email + alertes : Health Probe Status du LB < 100 %, CPU vm-app > 80 %,
+  modification d'une règle NSG (Activity log).
+
+```
+SOURCE            CANAL                   DESTINATION
+Key Vault    ──►  diagnostic setting  ──┐
+Activity log ──►  diagnostic setting  ──┼──►  Log Analytics  ◄── KQL
+vm-app       ──►  AMA + DCR           ──┘
+
+Métrique LB ──► alert rule ──► action group ──► email
+```
+**Authentification vs autorisation (Key Vault)**
+
+| Appelant | Identité | Rôle | Code |
+|---|---|---|---|
+| jumpbox | ❌ | ❌ | 401 |
+| jumpbox (identité via `az vm identity assign`, retirée après) | ✅ | ❌ | 403 `ForbiddenByRbac` |
+| vm-app | ✅ | `Key Vault Secrets User` | 200 |
+
+**Requête KQL : lectures de secrets**
+
+```kql
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.KEYVAULT"
+| where OperationName == "SecretGet"
+| project TimeGenerated, id_s, identity_claim_oid_g, CallerIPAddress, httpStatusCode_d
+| order by TimeGenerated desc
+```
+
+**Tests réalisés**
+
+| Test | Résultat |
+|---|---|
+| Email d'ajout à l'action group | reçu |
+| KQL : lectures par vm-app (oid MI, 10.0.1.4) | 200 ×4 |
+| KQL : lectures par la jumpbox (10.0.3.4) | 403 |
+| KQL : lectures par Terraform (poste admin) | 200 (refresh du plan) |
+| Arrêt de Nginx → Health Probe Status | 0 % |
+| Alerte `alert-lb-probe` | Fired (Monitor → Alerts) ; email : à confirmer |
+
+**Problèmes rencontrés**
+- **403 `ForbiddenByFirewall`** au 1er apply : IP publique changée → `admin_ip` mis à jour.
+- MySQL créé avant l'échec → mot de passe différent de Key Vault : incrément **ensemble**
+  des deux `_wo_version` (2 → 3).
+- Alerte métrique **stateful** : un seul email « Fired » tant qu'elle n'est pas « Resolved ».
+
+**À retenir**
+- Métriques : automatiques. Logs : uniquement via un diagnostic setting.
+- Le LB Standard n'a pratiquement pas de logs : on alerte sur ses métriques.
