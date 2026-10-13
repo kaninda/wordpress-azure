@@ -19,7 +19,7 @@ variable "owner" {
 variable "etape" {
   description = "Étape courante du lab"
   type        = string
-  default     = "07-monitoring"
+  default     = "07-backup"
 }
 
 variable "admin_ip" {
@@ -43,5 +43,7 @@ variable "alert_email" {
   description = "Email qui reçoit les alertes"
   type        = string
 }
+
+
 
 
