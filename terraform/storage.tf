@@ -15,6 +15,12 @@ resource "azurerm_storage_account" "media" {
   # azurerm 5.x : remplace public_network_access_enabled (déprécié, retiré en v6).
   public_network_access = "Disabled"
 
+  # Soft delete des shares : un share supprimé reste récupérable 7 jours
+  share_properties {
+    retention_policy {
+      days = 7
+    }
+  }
   tags = local.common_tags # adapte à ce que tu utilises déjà
 }
 
