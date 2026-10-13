@@ -23,7 +23,7 @@ déjà réalisée sur AWS, en Infrastructure as Code.
 | 04 | MySQL Flexible + WordPress | MySQL Flexible | ~0.23 CHF | ✅ |
 | 05 | Stockage (Azure Files) | Storage account, private endpoint | ~0.51 CHF | ✅ |
 | 06 | Identité / secrets | Key Vault, private endpoint | ~0.34 CHF | ✅ |
-| 07 | Monitoring / backup | Log Analytics, Backup | à compléter (J+1) | 🔄 session 1 ✅ |
+| 07 | Monitoring / backup | Log Analytics, snapshots, MySQL restauré | à compléter (J+1) | ✅ |
 | 08 | Azure Bastion | Bastion | — | ⏳ |
 
 Coût constaté : Cost Management → Cost analysis, granularité *Daily*, groupé par tag `etape`
@@ -389,3 +389,44 @@ AzureDiagnostics
 **À retenir**
 - Métriques : automatiques. Logs : uniquement via un diagnostic setting.
 - Le LB Standard n'a pratiquement pas de logs : on alerte sur ses métriques.
+
+### Session 2 : backup
+
+**Changement de plan** : le soft delete du **Recovery Services vault** est désormais imposé
+(aucune option pour le désactiver, et l'argument `soft_delete_enabled` n'existe plus en azurerm 5.8).
+Après un backup, le vault reste bloqué 14 jours → `destroy` impossible.
+→ Remplacé par les sauvegardes **natives** de chaque service.
+
+| Donnée | Sauvegarde | Où elle vit |
+|---|---|---|
+| Disque de vm-app | snapshot incrémental (CLI) | ressource snapshot dans le RG |
+| Share `wp-uploads` | snapshot du share (CLI) + soft delete 7 j (Terraform) | dans le storage account |
+| MySQL | backups automatiques → restauration point-in-time | géré par le service |
+
+**Ajouté** : `share_properties.retention_policy` (soft delete des shares, 7 jours).
+
+**Tests réalisés**
+
+| Test | Résultat |
+|---|---|
+| Snapshot du disque OS de vm-app | `Succeeded` |
+| Suppression de `…-scaled.jpg` puis `curl` | 404 |
+| Montage du snapshot du share (`ro,snapshot=@GMT-…`) et copie du fichier | 200 |
+| Article publié à 11:03 puis supprimé ; PITR à 09:05 UTC | article présent **uniquement** sur le serveur restauré |
+| Soft delete du share | 7 jours (portail) |
+
+**Procédure de destroy** (ressources créées hors Terraform)
+1. Supprimer le serveur MySQL restauré, le snapshot du disque et le snapshot du share
+   (portail → share → *View snapshots* ; ⚠️ pas *Delete share*).
+2. `terraform destroy`. Si `InUseSubnetCannotBeDeleted` sur snet-data : attendre 5 à 10 min
+   que le lien du serveur MySQL supprimé disparaisse, puis relancer.
+
+**À retenir**
+- Le Recovery Services vault isole les sauvegardes dans un stockage géré par Microsoft :
+  elles survivent à la suppression des ressources. D'où son soft delete imposé.
+- Les snapshots natifs vivent à côté de la source : ils disparaissent avec elle.
+- PITR MySQL = toujours un **nouveau** serveur.
+- MySQL B1ms et 32 Go de stockage sont couverts par les services gratuits 12 mois (portail).
+
+**Dette**
+- Recovery Services vault non pratiqué (soft delete imposé) ; à faire dans un RG dédié si besoin.
